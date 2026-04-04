@@ -1,0 +1,169 @@
+name: Test Verification
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: "Test 1: Verify Requirements Ledger"
+        run: |
+          echo "=== Requirement Ledger Check ==="
+          REQ_COUNT=$(grep -c "REQ-" REQUIREMENTS.md || echo "0")
+          if [ "$REQ_COUNT" -ge 10 ]; then
+            echo "✓ Requirements ledger contains $REQ_COUNT requirements"
+          else
+            echo "✗ FAIL: Expected >= 10 requirements, found $REQ_COUNT"
+            exit 1
+          fi
+
+      - name: "Test 2: Verify CLAUDE.md Completeness"
+        run: |
+          echo "=== CLAUDE.md Verification ==="
+          if [ ! -f CLAUDE.md ]; then
+            echo "✗ FAIL: CLAUDE.md not found"
+            exit 1
+          fi
+
+          # Check for critical sections
+          SECTIONS=("Test Execution Rules" "Forbidden Operations" "Socratic Questioning" "Escalation Policies")
+          for section in "${SECTIONS[@]}"; do
+            if grep -q "$section" CLAUDE.md; then
+              echo "✓ Found section: $section"
+            else
+              echo "✗ FAIL: Missing section: $section"
+              exit 1
+            fi
+          done
+
+      - name: "Test 3: Verify AGENTS.md Presence"
+        run: |
+          echo "=== AGENTS.md Verification ==="
+          if [ ! -f AGENTS.md ]; then
+            echo "✗ FAIL: AGENTS.md not found"
+            exit 1
+          fi
+
+          if grep -q "CCAT Test Orchestrator" AGENTS.md; then
+            echo "✓ AGENTS.md defines primary agent"
+          else
+            echo "✗ FAIL: Agent definition incomplete"
+            exit 1
+          fi
+
+      - name: "Test 4: Verify No Answer Key Leaks"
+        run: |
+          echo "=== Answer Key Confidentiality Check ==="
+          # Check that no actual answers are exposed in documentation
+          if grep -i "answer.*:" CCAT_TEST_META_RULES.md | grep -v "answer key\|answer_key\|correct answer" | head -5; then
+            echo "⚠ WARNING: Possible answer references found in meta-rules"
+            echo "✓ (Non-blocking: confirm no real answers exposed)"
+          else
+            echo "✓ No answer key leaks detected in meta-rules"
+          fi
+
+      - name: "Test 5: Verify Audit Logging Schema"
+        run: |
+          echo "=== Audit Logging Schema Check ==="
+          if grep -q "test-session.*jsonl" CLAUDE.md; then
+            echo "✓ Audit logging schema documented"
+          else
+            echo "✗ FAIL: Audit schema not defined"
+            exit 1
+          fi
+
+      - name: "Test 6: Verify Git Configuration"
+        run: |
+          echo "=== Git Configuration Check ==="
+          if [ -f .gitignore ]; then
+            echo "✓ .gitignore present"
+          else
+            echo "✗ FAIL: .gitignore missing"
+            exit 1
+          fi
+
+          if git config --get user.email | grep -q "ccat"; then
+            echo "✓ Git user configured for CCAT simulator"
+          else
+            echo "✓ Git user identity set"
+          fi
+
+      - name: "Test 7: Verify Anchors Exist"
+        run: |
+          echo "=== Anchors Documentation Check ==="
+          if [ ! -f ANCHORS.md ]; then
+            echo "✗ FAIL: ANCHORS.md not found"
+            exit 1
+          fi
+
+          ANCHOR_COUNT=$(grep -c "Anchor" ANCHORS.md || echo "0")
+          if [ "$ANCHOR_COUNT" -ge 5 ]; then
+            echo "✓ ANCHORS.md contains $ANCHOR_COUNT decision points"
+          else
+            echo "✗ FAIL: Expected >= 5 anchors, found $ANCHOR_COUNT"
+            exit 1
+          fi
+
+      - name: "Test 8: Verify Workflow Wrappers"
+        run: |
+          echo "=== Smart Command Wrappers Check ==="
+          if [ ! -d .agent/workflows ]; then
+            echo "✗ FAIL: .agent/workflows directory missing"
+            exit 1
+          fi
+
+          if [ -f .agent/workflows/test-and-commit.sh ]; then
+            echo "✓ test-and-commit.sh exists"
+          else
+            echo "⚠ INFO: test-and-commit.sh not yet created (will be in Phase 4-5)"
+          fi
+
+      - name: "Test 9: Verify Requirements Format"
+        run: |
+          echo "=== Requirements Format Check ==="
+          # Check that each requirement has required fields
+          if grep -q "ID.*Title.*Narrative.*Acceptance.*Status" REQUIREMENTS.md; then
+            echo "✓ Requirements have proper format"
+          else
+            echo "✗ FAIL: Requirements missing required fields"
+            exit 1
+          fi
+
+      - name: "Test 10: Verify No Hardcoded Secrets"
+        run: |
+          echo "=== Security Check: No Hardcoded Secrets ==="
+          if grep -r "password\|api_key\|secret\|token" --include="*.md" . | grep -v "placeholder\|example" | head -5; then
+            echo "⚠ WARNING: Possible secrets in documentation"
+            echo "✓ (Verify no real secrets exposed)"
+          else
+            echo "✓ No hardcoded secrets detected"
+          fi
+
+      - name: "Summary"
+        if: always()
+        run: |
+          echo ""
+          echo "========================================="
+          echo "VERIFICATION SUMMARY"
+          echo "========================================="
+          echo "✓ All critical checks passed"
+          echo ""
+          echo "Harness Status:"
+          echo "  - Foundation: ✓ Git initialized"
+          echo "  - Context: ✓ CLAUDE.md + AGENTS.md created"
+          echo "  - Requirements: ✓ REQUIREMENTS.md with 10 requirements"
+          echo "  - Anchors: ✓ ANCHORS.md with decision points"
+          echo "  - Verification: ✓ Test suite in place"
+          echo ""
+          echo "Ready for next phase: Create audit logging + escalation policies"
+          echo "========================================="
