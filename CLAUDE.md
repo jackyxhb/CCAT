@@ -775,6 +775,180 @@ You get up to 3 reinjections. If > 3 resets:
 
 ---
 
+## 21. Secondary Review & Audit Validation (P2-3) [Tier 3]
+
+### Purpose
+
+After completing all 50 questions and calculating score, submit test to QA Auditor for secondary validation before generating final report.
+
+**When:** After Q50 answered and score calculated  
+**Who:** QA Auditor agent (.agent/auditors/qa-auditor.md)  
+**What:** Validate test administration integrity across 7 checks
+
+### Validation Workflow
+
+**Step 1: Package Test State**
+- Collect: all responses, calculated score, domain breakdown, audit log
+- Package as: `.session/test-audit-request-[timestamp].json`
+- Status: "awaiting_validation"
+
+**Step 2: Submit to QA Auditor**
+- Message: "Test complete. Awaiting validation..."
+- Include: test session ID, question count, response count, calculated score
+- Wait for auditor response
+
+**Step 3: QA Auditor Performs 7 Checks**
+
+1. **Question Completeness** — 50 questions presented?
+2. **Answer Recording** — All 50 answers with timestamps?
+3. **Answer Key Protection** — No early reveal?
+4. **Score Calculation** — Formula applied correctly?
+5. **Domain Breakdown** — Scores logically consistent?
+6. **Recommendation Justification** — Recommendation aligns with score?
+7. **Audit Trail** — Full event log present?
+
+**Step 4: Receive Validation Report**
+
+Auditor returns status:
+- `APPROVED` — Proceed to final report
+- `APPROVED_WITH_WARNINGS` — Minor issues resolved; acceptable
+- `ESCALATION_REQUIRED` — Critical issue; request correction
+- `REJECTED` — Fundamental failure; abort test
+
+**Step 5: Handle Auditor Feedback**
+
+If `APPROVED` or `APPROVED_WITH_WARNINGS`:
+- Proceed to generate final report
+- Include auditor signature in report: "✓ Validated by QA Auditor"
+
+If `ESCALATION_REQUIRED`:
+- Address auditor's specific issues
+- Recalculate score if needed
+- Re-run failed checks (max 3 attempts)
+- If still failing after 3 attempts: escalate to human
+
+If `REJECTED`:
+- Log failure event
+- Escalate to human
+- Do NOT generate report
+- Do NOT use test results for decision
+
+### Collaboration Modes
+
+#### Cooperative (Default)
+- Auditor validates passively
+- Primary agent (you) accept validation
+- Proceed to report
+
+#### Competitive
+- Auditor recalculates score independently
+- If scores differ: agents debate
+- Consensus reached or escalated
+
+#### Coopetitive
+- Agents negotiate edge cases
+- Reach consensus on ambiguous answers
+- Document reasoning for future reference
+
+### Example: Validation Report
+
+```json
+{
+  "audit_timestamp": "2026-04-05T12:45:00.000Z",
+  "test_session_id": "ccat-2026-04-05-120000",
+  "checks_performed": 7,
+  "checks_passed": 7,
+  "checks_failed": 0,
+  "overall_status": "APPROVED",
+  "issues": [],
+  "recommendation_from_auditor": "Test administration meets all integrity criteria.",
+  "signature": "QA Auditor v1.0"
+}
+```
+
+### Integration with Reporting
+
+Once validated, include in final report:
+
+```
+========================================
+CCAT TEST RESULTS SUMMARY
+========================================
+
+[Score, Time, Breakdown, Analysis, Recommendation]
+
+---
+Validation Status: ✓ APPROVED by QA Auditor
+Auditor Checks: 7/7 passed
+Audit Timestamp: 2026-04-05T12:45:00Z
+========================================
+```
+
+### Benefits
+
+✅ Secondary validation prevents hallucinations  
+✅ Catches calculation errors before reporting  
+✅ Provides compliance audit trail  
+✅ Ensures test integrity at scale  
+✅ Foundation for adversarial debate mechanisms
+
+---
+
+## 22. Pattern Auditing & Entropy Prevention (P3-3) [Tier 3]
+
+### Purpose
+
+Automated detection of code smells, architectural issues, and entropy indicators to maintain system health and prevent technical debt accumulation.
+
+**When:** Runs weekly (Sundays 2 AM UTC) + on-push  
+**What:** Scan for dead code, circular dependencies, duplication, architecture violations, doc drift  
+**How:** GitHub Actions workflow + consolidation loop  
+**Output:** Pattern audit report + metrics tracking
+
+### Pattern Categories Audited
+
+1. **Dead Code** — Unused functions, variables, imports, unreachable code
+2. **Circular Dependencies** — Direct cycles, indirect cycles, self-references
+3. **Code Duplication** — Exact matches, high similarity, copy-paste errors
+4. **Architecture Violations** — Layer boundary violations, circular imports
+5. **Documentation Drift** — Out-of-sync docs, version mismatches, broken links
+
+### Audit Report Storage
+
+- **Location:** `.session/pattern-audit-[YYYY-MM-DD].md`
+- **Metrics:** `.session/pattern-metrics-[YYYY-MM-DD].json`
+- **Frequency:** Weekly + on-push triggers
+- **Retention:** 30 days (older reports archived)
+
+### Health Thresholds
+
+| Metric | Status | Threshold |
+|--------|--------|-----------|
+| **Dead Code Lines** | Green | 0-5 |
+| **Circular Dependencies** | Green | 0 |
+| **Duplication Blocks** | Green | 0-2 |
+| **Architecture Violations** | Green | 0 |
+| **Doc Drift Items** | Green | 0-1 |
+
+### Integration with Consolidation
+
+Pattern audit metrics feed into daily consolidation pipeline:
+
+1. **Aggregate** — Collect all weekly pattern audits
+2. **Trend Analysis** — Track metrics over time
+3. **Alert Generation** — If metrics degrade, flag for review
+4. **Archive** — Keep 30-day rolling window of reports
+
+### Benefits
+
+✅ **Prevents Accumulation** — Catches entropy early  
+✅ **Continuous Monitoring** — Automated trend detection  
+✅ **Proactive Maintenance** — Fixes before they become problems  
+✅ **Compliance Audit Trail** — Full history of system health  
+✅ **Evolving Standards** — Thresholds can be tightened over time
+
+---
+
 ## References & Cross-Links
 
 - **AGENTS.md** — Agent definitions and operational metadata
@@ -791,4 +965,4 @@ You get up to 3 reinjections. If > 3 resets:
 
 This document is the single source of truth for CCAT test harness execution. When in doubt, refer back to this file.
 
-**Last Updated:** 2026-04-05 (v1.0.0)
+**Last Updated:** 2026-04-05 (v1.1.0-tier3a)

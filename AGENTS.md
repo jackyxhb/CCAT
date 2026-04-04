@@ -91,6 +91,94 @@ This file declares the agents operating within the CCAT Test Harness. Currently,
 
 ---
 
+## Agent 2: QA Auditor (Secondary Validator)
+
+### Metadata
+
+| Attribute | Value |
+|-----------|-------|
+| **Agent ID** | `auditor-qa-01` |
+| **Agent Name** | QA Auditor |
+| **Type** | Autonomous Secondary Validator |
+| **Model** | Claude (latest) |
+| **Mode** | Triggered post-test validation |
+| **Tier** | Tier 3 (Advanced) |
+
+### Responsibilities
+
+| Responsibility | Details |
+|---|---|
+| **Validation** | Perform 7-point check on primary agent's test administration |
+| **Integrity Checking** | Verify question completeness, answer recording, score calculation |
+| **Compliance Review** | Ensure answer key protection, audit trail completeness |
+| **Consistency Checking** | Validate domain breakdown logic, recommendation justification |
+| **Dynamic Evaluation** | Question answer key itself; flag edge cases and ambiguities |
+| **Audit Reporting** | Generate validation report with pass/fail status |
+| **Feedback Loop** | Request corrections from primary agent if issues found |
+
+### Operational Constraints
+
+| Constraint | Details |
+|---|---|
+| **Trigger Condition** | Activated after Q50 answered; before final report generated |
+| **Scope Boundary** | Can access primary agent's test state; read `.session/` files |
+| **Data Access** | Read: test results, audit logs, answer key; Write: validation report only |
+| **Network Access** | None allowed |
+| **System Access** | None allowed |
+| **Authority** | Can block or escalate test if critical issues detected |
+
+### Validation Checks
+
+| Check # | Name | Criterion |
+|---|---|---|
+| **1** | Question Completeness | 50 questions presented (count = 50) |
+| **2** | Answer Recording | All 50 answers with timestamps (responses.length = 50) |
+| **3** | Answer Key Protection | No answer reveal before Q50 completion |
+| **4** | Score Calculation | Formula applied correctly: (correct / 50) × 100 |
+| **5** | Domain Breakdown | Domain scores logically consistent and sum correctly |
+| **6** | Recommendation Justification | Recommendation aligns with score threshold |
+| **7** | Audit Trail Completeness | Full event log present with 50+ question events |
+
+### Success Criteria
+
+| Criterion | Measurement |
+|---|---|
+| **All checks pass** | checks_passed = 7 |
+| **No critical issues** | overall_status = APPROVED or APPROVED_WITH_WARNINGS |
+| **Report generated** | Validation report contains all 7 check results |
+| **Signature included** | Report signed with auditor ID and timestamp |
+
+### Failure Modes & Escalation
+
+| Failure Mode | Detection | Escalation |
+|---|---|---|
+| **Incomplete answers** | responses.length < 50 | ERROR - Request primary agent to fill gaps |
+| **Scoring error** | Calculated score ≠ expected score | ERROR - Request recalculation (max 3 attempts) |
+| **Answer leak** | Answer key revealed before Q50 | CRITICAL - Mark test as compromised, escalate to human |
+| **Missing audit log** | .session/test-session-*.jsonl not found | ERROR - Request regeneration |
+| **Anomalous score** | Score inconsistent with domain breakdown | WARNING - Flag for review (coopetitive negotiation) |
+| **Illogical recommendation** | Recommendation contradicts score | ERROR - Request justification, escalate if unresolved |
+
+### Collaboration Modes
+
+| Mode | Pattern | When to Use |
+|---|---|---|
+| **Cooperative** | Auditor validates; primary agent accepts | Standard (most tests) |
+| **Competitive** | Auditor recalculates; agents debate | Score disagreement |
+| **Coopetitive** | Agents negotiate edge cases | Ambiguous answers |
+
+### Integration Points
+
+| System | Integration |
+|---|---|
+| **CLAUDE.md §21** | Audit validation flow and collaboration channels |
+| **Primary Agent** | Receives test state package; submits validation report |
+| **Final Report** | Includes auditor signature and validation status |
+| **ANCHORS.md** | Records validation decision point |
+| **Escalation** | Routes critical issues to human escalation chain |
+
+---
+
 ## Future MAS Architecture (Not Yet Active)
 
 If the project scales to Multi-Agent System (MAS), the following topology is recommended:
@@ -167,15 +255,15 @@ For any new agent added to the system:
 
 ## Current System Status
 
-**Scale:** Single Agent System (SAS)  
-**Total Agents:** 1 (CCAT Test Orchestrator)  
-**Status:** ✅ Ready for deployment
+**Scale:** Single Agent System with Secondary Validator (SAS+)  
+**Total Agents:** 2 (CCAT Test Orchestrator + QA Auditor)  
+**Status:** ✅ Production-Ready with Quality Assurance
 
 **Notes:**
-- No inter-agent communication needed
-- No subagent spawning
-- No coordination topology
-- SAS simplifies harness requirements (P0-5, P0-10 not critical for now)
+- Primary agent handles test administration
+- Secondary agent (QA Auditor) validates results before reporting
+- One-way communication: Primary → Auditor → Primary (no deadlock)
+- Prepared for MAS transition (P0-5, P0-10 framework ready)
 
 ---
 
@@ -210,4 +298,4 @@ For any new agent added to the system:
 
 ## End of AGENTS.md
 
-Last Updated: 2026-04-05 (v1.0.0)
+Last Updated: 2026-04-05 (v1.1.0-tier3a)
