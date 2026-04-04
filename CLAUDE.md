@@ -1150,6 +1150,99 @@ Each mailbox: JSONL format (one message per line, FIFO order)
 
 ---
 
+## 25. Branch-Based Cognitive Memory (P1-9) [Tier 3]
+
+### Purpose
+
+Enable parallel task execution via git branches and worktrees, with git commits serving as memory checkpoints.
+
+**Mechanism:** Git worktrees for task isolation + branches for parallelization  
+**Memory:** Commits as checkpoints; git log = cognitive history  
+**Use Case:** Parallel domain scoring, A/B testing, large-scale test variants
+
+### Single-Agent Memory (Current)
+
+```
+Main Branch Timeline:
+Q1 → commit → Q2 → commit → ... → Q50 → commit
+
+Git History = Cognitive Memory:
+  commit-50: checkpoint: Q50 | Score: 84%
+  commit-49: checkpoint: Q49 | Score: 84%
+  commit-48: checkpoint: Q48 | Score: 84%
+  ...
+  commit-1: checkpoint: Q1 | Score: 100%
+```
+
+### Multi-Branch Memory (Future)
+
+```
+Parallel Branches (Independent Scoring):
+
+Main:        Q1 → Q2 → ... → Q50 (questions)
+Verbal:      V1 → V2 → ... → V10 (verbal scoring in parallel)
+Quant:       Q1 → Q2 → ... → Q10 (quant scoring in parallel)
+Spatial:     S1 → S2 → ... → S10 (spatial scoring in parallel)
+Report:      Merge → Aggregate → Final report
+
+Total Time = Max(question time, scoring time) = question time (bottleneck)
+```
+
+### Worktree Structure
+
+```
+.agent/worktrees/
+├── main/ (main branch work)
+├── verbal-branch/ (verbal domain only)
+│   ├── verbal-score.json (isolated state)
+│   └── git history (verbal commits only)
+├── quant-branch/ (quant domain only)
+│   ├── quant-score.json (isolated state)
+│   └── git history (quant commits only)
+└── spatial-branch/ (spatial domain only)
+    ├── spatial-score.json (isolated state)
+    └── git history (spatial commits only)
+```
+
+### Parallel Execution Workflow
+
+**Phase 1: Parallel Task Execution**
+- Main branch: Present Q1-Q50 sequentially
+- Domain branches: Score in parallel (no interdependency)
+- Duration: ~15 minutes total (presenter is bottleneck)
+
+**Phase 2: Merge Results**
+```bash
+git merge verbal-branch   # Merge verbal scores
+git merge quant-branch    # Merge quant scores
+git merge spatial-branch  # Merge spatial scores
+```
+
+**Phase 3: Aggregate & Report**
+```bash
+# Combine domain results into final score
+overall = (verbal + quant + spatial) / 3
+```
+
+### Conflict-Free Design
+
+**Why No Merges Conflicts?**
+- Each branch modifies different files (verbal-score.json, quant-score.json, spatial-score.json)
+- Main branch only appends Q1-Q50 (never parallel writes)
+- Domain branches read test-results.json (never write to it)
+
+**Result:** 3-way merges always succeed; no conflict resolution needed
+
+### Benefits
+
+✅ **Parallel Execution** — Score domains concurrently  
+✅ **Memory Persistence** — Git commits = checkpoints  
+✅ **Recovery-Friendly** — Restore from git log  
+✅ **A/B Testing** — Run variants on separate branches  
+✅ **Observable** — Full execution history in git
+
+---
+
 ## References & Cross-Links
 
 - **AGENTS.md** — Agent definitions and operational metadata
