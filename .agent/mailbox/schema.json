@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Inter-Agent Message Schema",
+  "description": "Message protocol for multi-agent system (MAS) communication",
+  "type": "object",
+  "required": ["type", "from", "to", "timestamp", "payload", "message_id"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["task", "message", "ack", "nack", "broadcast"],
+      "description": "Message type: task=work assignment, message=generic message, ack=acknowledgment, nack=negative ack, broadcast=all agents"
+    },
+    "from": {
+      "type": "string",
+      "pattern": "^(supervisor|auditor-qa-01|question-loader|question-presenter|scorer|report-generator|agent-[a-zA-Z0-9-]+)$",
+      "description": "Sender agent ID"
+    },
+    "to": {
+      "type": "string",
+      "pattern": "^(supervisor|auditor-qa-01|question-loader|question-presenter|scorer|report-generator|broadcast|agent-[a-zA-Z0-9-]+)$",
+      "description": "Recipient agent ID or 'broadcast' for all agents"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when message was created"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["high", "normal", "low"],
+      "default": "normal",
+      "description": "Message priority (affects processing order)"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Message payload (task data or metadata)",
+      "properties": {
+        "task": {
+          "type": "string",
+          "description": "Task name (e.g., 'load_questions', 'present_question', 'score_batch')"
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Unique task identifier for tracking"
+        },
+        "data": {
+          "type": "object",
+          "description": "Task-specific data (questions[], responses[], score, etc.)"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Optional metadata (context hints, version, source)"
+        }
+      }
+    },
+    "message_id": {
+      "type": "string",
+      "pattern": "^msg-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "description": "Unique message ID (UUIDv4 with 'msg-' prefix)"
+    },
+    "ack_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether sender expects acknowledgment"
+    },
+    "ack_message_id": {
+      "type": ["string", "null"],
+      "pattern": "^(msg-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?$",
+      "description": "If ACK: message_id of message being acknowledged"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "delivered", "processed", "failed", "expired"],
+      "default": "pending",
+      "description": "Message delivery status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When message was created (redundant with timestamp, for clarity)"
+    },
+    "expires_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When message expires (null = never expires)"
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Number of delivery retry attempts"
+    },
+    "max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 3,
+      "description": "Maximum number of retries before failure"
+    },
+    "error": {
+      "type": ["string", "null"],
+      "description": "Error message if delivery/processing failed"
+    },
+    "context": {
+      "type": "object",
+      "description": "Execution context (session_id, checkpoint, etc.)",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "description": "Test session ID"
+        },
+        "checkpoint": {
+          "type": "string",
+          "description": "Current checkpoint (Q10, Q25, etc.)"
+        },
+        "context_window": {
+          "type": "integer",
+          "description": "Context window number (1, 2, 3 if resets occurred)"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "type": "task",
+      "from": "supervisor",
+      "to": "question-loader",
+      "timestamp": "2026-04-05T12:00:00.000Z",
+      "priority": "high",
+      "payload": {
+        "task": "load_questions",
+        "task_id": "task-q-001",
+        "data": {
+          "question_source": "CCAT_TEST_META_RULES.md",
+          "expected_count": 50
+        }
+      },
+      "message_id": "msg-12345678-1234-1234-1234-123456789abc",
+      "ack_required": true,
+      "created_at": "2026-04-05T12:00:00.000Z",
+      "expires_at": "2026-04-05T12:00:30.000Z",
+      "context": {
+        "session_id": "ccat-2026-04-05-120000",
+        "checkpoint": "init"
+      }
+    },
+    {
+      "type": "message",
+      "from": "question-loader",
+      "to": "supervisor",
+      "timestamp": "2026-04-05T12:00:05.000Z",
+      "priority": "normal",
+      "payload": {
+        "task": "load_questions_complete",
+        "task_id": "task-q-001",
+        "data": {
+          "questions_loaded": 50,
+          "answer_key_loaded": true
+        }
+      },
+      "message_id": "msg-87654321-4321-4321-4321-cba987654321",
+      "ack_required": true,
+      "created_at": "2026-04-05T12:00:05.000Z"
+    },
+    {
+      "type": "ack",
+      "from": "supervisor",
+      "to": "question-loader",
+      "timestamp": "2026-04-05T12:00:06.000Z",
+      "priority": "normal",
+      "payload": {},
+      "message_id": "msg-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "ack_message_id": "msg-87654321-4321-4321-4321-cba987654321",
+      "status": "delivered"
+    },
+    {
+      "type": "broadcast",
+      "from": "supervisor",
+      "to": "broadcast",
+      "timestamp": "2026-04-05T12:10:00.000Z",
+      "priority": "high",
+      "payload": {
+        "task": "context_reset_alert",
+        "data": {
+          "context_window": 2,
+          "checkpoint": "Q25",
+          "action": "all_agents_pause_and_wait_for_reinjection"
+        }
+      },
+      "message_id": "msg-ffffffff-0000-1111-2222-333333333333",
+      "ack_required": false
+    }
+  ]
+}

@@ -949,6 +949,207 @@ Pattern audit metrics feed into daily consolidation pipeline:
 
 ---
 
+## 23. Orchestration Logic & Multi-Agent Coordination (P0-5) [Tier 3]
+
+### Purpose
+
+Design and document supervisor pattern for multi-agent system (MAS) expansion. Prepares harness for scaling to multiple coordinated agents without rearchitecture.
+
+**Current Use:** Documentation only (SAS still monolithic)  
+**Future Use:** When MAS deployment activates  
+**Architecture:** Supervisor + 4 worker agents (sequential handoff)
+
+### Future MAS Topology
+
+```
+                   Supervisor
+                   (Orchestrator)
+                       │
+         ┌─────────────┼─────────────┐
+         ↓             ↓             ↓
+    Question      Question      Scorer      Report
+    Loader        Presenter     Agent       Generator
+     (1)            (2)          (3)          (4)
+```
+
+**Task Flow:**
+1. Supervisor spawns Question Loader
+2. Loader outputs: `{ questions[], answer_key[] }`
+3. Supervisor passes to Question Presenter
+4. Presenter outputs: `{ responses[], timestamps[] }`
+5. Supervisor passes batch to Scorer
+6. Scorer outputs: `{ score_pct, domain_breakdown }`
+7. Supervisor passes to Report Generator
+8. Generator outputs: `{ formatted_report }`
+9. Supervisor returns report to user
+
+### Supervisor Responsibilities
+
+| Responsibility | Details |
+|---|---|
+| **Task Routing** | Route completed tasks to next agent |
+| **Agent Lifecycle** | Spawn, monitor, restart agents |
+| **Message Passing** | Mailbox-based communication (.agent/mailbox/) |
+| **Handoff Mgmt** | Ensure work passes cleanly between agents |
+| **Timeout Detection** | Monitor agent response times; retry on timeout |
+| **State Management** | Serialize supervisor state; recover on context reset |
+| **Escalation** | Detect critical errors; escalate to human |
+
+### Communication Protocol
+
+Agents communicate via mailbox (filesystem-based):
+```
+.agent/mailbox/
+  ├─ to-loader.jsonl
+  ├─ to-presenter.jsonl
+  ├─ to-scorer.jsonl
+  ├─ to-generator.jsonl
+  └─ broadcast.jsonl
+```
+
+Message format:
+```json
+{
+  "type": "task | message | ack",
+  "from": "supervisor | agent-id",
+  "to": "agent-id | broadcast",
+  "timestamp": "ISO 8601",
+  "priority": "high | normal | low",
+  "payload": { "task": "...", "data": {...} },
+  "message_id": "msg-uuid",
+  "ack_required": true | false
+}
+```
+
+### Timeout & Retry Configuration
+
+| Agent | Timeout | Max Retries | On Failure |
+|---|---|---|---|
+| Question Loader | 30 sec | 2 | escalate |
+| Question Presenter | none (interactive) | 0 | escalate |
+| Scorer | 5 min | 2 | escalate |
+| Report Generator | 1 min | 2 | escalate |
+
+Retry strategy: exponential backoff (5s, 10s, escalate)
+
+### State Serialization (Context Reset)
+
+Supervisor state saved to `.session/supervisor-state.json`:
+```json
+{
+  "session_id": "ccat-2026-04-05-120000",
+  "status": "running | paused | completed",
+  "current_stage": "loading | presenting | scoring | reporting",
+  "checkpoint": "Q25",
+  "context_resets": 1,
+  "agent_status": { ... }
+}
+```
+
+On context reset:
+1. Load supervisor state
+2. Identify last completed stage
+3. Resume from next agent in pipeline
+4. Increment context_resets counter
+
+### Design Rationale
+
+**Why Sequential Handoff?**
+- Questions must be loaded before presenting
+- Presenter must present Q1-Q50 in order
+- Scorer must wait for all 50 responses
+- Reporter needs final score to generate report
+
+**Why Filesystem Mailbox?**
+- ✅ Survives context resets
+- ✅ Full audit trail
+- ✅ Debuggable
+- ❌ Slightly slower than memory
+
+**Why 3-Retry Limit?**
+- Handles transient failures
+- Prevents infinite loops
+- Catches real failures fast
+
+### Benefits
+
+✅ **Zero Rearchitecture** — Design prepared for MAS expansion  
+✅ **Scalable** — Add agents without changing supervisor logic  
+✅ **Resilient** — Timeouts + retries + escalation  
+✅ **Observable** — Full message audit trail  
+✅ **Fault-Tolerant** — Context reset recovery built-in
+
+---
+
+## 24. Inter-Agent Communication & Mailbox System (P0-10) [Tier 3]
+
+### Purpose
+
+Enable asynchronous, reliable message passing between agents without shared memory or direct coupling.
+
+**Mechanism:** Filesystem-based mailbox (JSONL append-only queues)  
+**Communication:** Send, Receive, Acknowledge, Broadcast  
+**Reliability:** Deduplication, FIFO ordering, timeout + retry, cleanup
+
+### Message Types
+
+| Type | Purpose | Ack Required | Example |
+|---|---|---|---|
+| **task** | Assign work to agent | Yes | `{ "type": "task", "to": "scorer", "payload": { "task": "score_batch" } }` |
+| **message** | Status/result update | Usually | `{ "type": "message", "from": "loader", "data": { "questions": [...] } }` |
+| **ack** | Acknowledge receipt | No | `{ "type": "ack", "ack_message_id": "msg-123" }` |
+| **nack** | Report processing error | No | `{ "type": "nack", "payload": { "error": "Invalid format" } }` |
+| **broadcast** | System announcement | No | `{ "type": "broadcast", "to": "broadcast", "payload": { "action": "pause_all" } }` |
+
+### Mailbox Structure
+
+```
+.agent/mailbox/
+├── to-supervisor.jsonl
+├── to-auditor-qa-01.jsonl
+├── to-question-loader.jsonl
+├── to-question-presenter.jsonl
+├── to-scorer.jsonl
+├── to-report-generator.jsonl
+├── broadcast.jsonl
+├── schema.json
+├── README.md
+└── archive/ (cleanup + old messages)
+```
+
+Each mailbox: JSONL format (one message per line, FIFO order)
+
+### Mailbox Operations
+
+| Operation | Sender | Function | Result |
+|---|---|---|---|
+| **send(to, msg)** | Any agent | Append message to recipient's mailbox | Message queued |
+| **receive(agent_id)** | Agent | Read oldest message from mailbox | Message loaded |
+| **ack(msg_id)** | Recipient | Send ack to sender | Delivery confirmed |
+| **nack(msg_id, error)** | Recipient | Send error to sender | Failure reported |
+
+### Deduplication & Ordering
+
+**Deduplication:** Track seen message_ids in `.session/seen-messages.json`  
+**FIFO Ordering:** Read oldest message first (`head -n1`), remove after processing (`tail -n +2`)  
+**Cleanup:** Delete messages > 1 hour old; archive delivered messages
+
+### Error Handling
+
+**Timeout:** No ACK within 30s → retry (max 3x, exponential backoff)  
+**NACK:** Processing error → sender decides: retry or escalate  
+**Delivery Failure:** > 3 retries → escalate to human
+
+### Benefits
+
+✅ **Decoupled** — Agents don't need to know each other  
+✅ **Asynchronous** — Non-blocking communication  
+✅ **Reliable** — ACK + retry + deduplication  
+✅ **Observable** — Full message audit trail  
+✅ **Survives Resets** — Filesystem-persistent
+
+---
+
 ## References & Cross-Links
 
 - **AGENTS.md** — Agent definitions and operational metadata
