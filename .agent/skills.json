@@ -1,0 +1,124 @@
+{
+  "harness_version": "1.0.0",
+  "skills_config": {
+    "intake_phase": {
+      "description": "Pre-test preparation and ambiguity resolution",
+      "skills": [
+        "requirements-verification",
+        "socratic-questioning",
+        "state-initialization"
+      ],
+      "context_tokens": 800
+    },
+    "presentation_phase": {
+      "description": "Question presentation and answer collection",
+      "skills": [
+        "question-presenter",
+        "answer-recorder",
+        "time-tracker",
+        "answer-validation"
+      ],
+      "context_tokens": 2000
+    },
+    "checkpoint_phase": {
+      "description": "Periodic state checkpointing and context compaction",
+      "skills": [
+        "context-checkpoint-creator",
+        "conversation-summarizer",
+        "state-serializer"
+      ],
+      "context_tokens": 500
+    },
+    "scoring_phase": {
+      "description": "Answer comparison and score calculation",
+      "skills": [
+        "answer-key-comparator",
+        "score-calculator",
+        "domain-analyzer"
+      ],
+      "context_tokens": 1000
+    },
+    "reporting_phase": {
+      "description": "Report generation and recommendation",
+      "skills": [
+        "report-generator",
+        "recommendation-engine",
+        "anchor-recorder"
+      ],
+      "context_tokens": 1000
+    }
+  },
+  "skill_definitions": {
+    "requirements-verification": {
+      "trigger": "intake_phase",
+      "action": "Load REQUIREMENTS.md, verify all 10 requirements present",
+      "tokens": 150
+    },
+    "socratic-questioning": {
+      "trigger": "intake_phase",
+      "action": "Apply 6-category Socratic interrogation from CLAUDE.md §9",
+      "tokens": 400
+    },
+    "question-presenter": {
+      "trigger": "presentation_phase",
+      "action": "Present Q_N with domain label and question text",
+      "tokens": 300
+    },
+    "answer-recorder": {
+      "trigger": "presentation_phase",
+      "action": "Record user response with timestamps in .session/test-results.json",
+      "tokens": 200
+    },
+    "context-checkpoint-creator": {
+      "trigger": "checkpoint_phase",
+      "action": "Create .session/context-checkpoint-q0XX.md every 10 questions",
+      "tokens": 100
+    },
+    "conversation-summarizer": {
+      "trigger": "checkpoint_phase",
+      "action": "Summarize conversation history; discard full Q text",
+      "tokens": 200
+    },
+    "score-calculator": {
+      "trigger": "scoring_phase",
+      "action": "Compare responses to answer key; calculate (correct/50)*100",
+      "tokens": 300
+    },
+    "domain-analyzer": {
+      "trigger": "scoring_phase",
+      "action": "Break down score by verbal/quantitative/spatial",
+      "tokens": 250
+    },
+    "report-generator": {
+      "trigger": "reporting_phase",
+      "action": "Generate summary report with score, time, domains",
+      "tokens": 500
+    },
+    "recommendation-engine": {
+      "trigger": "reporting_phase",
+      "action": "Provide hiring recommendation (Hire/Further Assessment/No Hire)",
+      "tokens": 300
+    },
+    "anchor-recorder": {
+      "trigger": "reporting_phase",
+      "action": "Record final anchor in ANCHORS.md with test completion data",
+      "tokens": 200
+    }
+  },
+  "phase_sequence": [
+    "intake_phase",
+    "presentation_phase (repeat Q1-Q50 with checkpoint_phase every 10 Q)",
+    "scoring_phase",
+    "reporting_phase"
+  ],
+  "context_budget": {
+    "total_window": 8000,
+    "reserved_for_prompt": 2000,
+    "available_for_skills": 6000,
+    "recommended_usage": "Keep < 5000 tokens; checkpoint when > 4500"
+  },
+  "loading_strategy": {
+    "description": "Load skills on-demand by phase; unload when phase completes",
+    "example": "During presentation_phase: load question-presenter, answer-recorder. Unload score-calculator, report-generator."
+  }
+}

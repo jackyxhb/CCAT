@@ -1,0 +1,97 @@
+name: Scheduled Cleanup
+
+on:
+  schedule:
+    # Run cleanup daily at 3 AM UTC
+    - cron: '0 3 * * *'
+    # Extra cleanup run on Sundays (more thorough)
+    - cron: '0 4 * * 0'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: "Cleanup: Remove stale session files"
+        run: |
+          echo "=== Cleanup: Stale Session Files ==="
+
+          # Remove .session files older than 30 days
+          find .session -name "test-session-*.jsonl" -mtime +30 -delete 2>/dev/null || true
+          find .session -name "context-checkpoint-*.md" -mtime +30 -delete 2>/dev/null || true
+
+          echo "✓ Stale session files cleaned"
+          echo "  (Kept files < 30 days old)"
+
+      - name: "Cleanup: Log cleanup report"
+        run: |
+          echo "=== Cleanup Report ===" > .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "**Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "**Status:** Cleanup completed" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "## Items Cleaned" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "- Stale session files (> 30 days)" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+          echo "- Stale context checkpoints (> 30 days)" >> .session/cleanup-report-$(date +%Y-%m-%d).md
+
+      - name: "Cleanup: Verify test-results integrity"
+        run: |
+          echo "=== Verify Test Results Files ==="
+
+          if [ -f .session/test-results.json ]; then
+            echo "✓ Active test-results.json present"
+            echo "  Size: $(wc -c < .session/test-results.json) bytes"
+          else
+            echo "ℹ No active test session"
+          fi
+
+      - name: "Cleanup: Verify audit log integrity"
+        run: |
+          echo "=== Verify Audit Logs ==="
+
+          # Count audit log files
+          LOG_COUNT=$(find .session -name "test-session-*.jsonl" | wc -l)
+          echo "✓ Found $LOG_COUNT audit logs"
+
+      - name: "Cleanup: Git status"
+        run: |
+          echo "=== Git Status After Cleanup ==="
+
+          git status --short || echo "No changes"
+
+      - name: "Cleanup: Commit cleanup report"
+        if: success()
+        run: |
+          git config user.name "CCAT Cleanup"
+          git config user.email "cleanup@example.com"
+
+          git add .session/cleanup-report-*.md || true
+
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore: cleanup stale session files [$(date -u +%Y-%m-%d)]" || true
+          else
+            echo "No cleanup changes to commit"
+          fi
+
+      - name: "Summary"
+        if: always()
+        run: |
+          echo ""
+          echo "========================================="
+          echo "CLEANUP EXECUTION SUMMARY"
+          echo "========================================="
+          echo "✓ Cleanup run complete"
+          echo ""
+          echo "Cleanup Actions:"
+          echo "  - Removed stale session files (> 30 days)"
+          echo "  - Verified active test results"
+          echo "  - Generated cleanup report"
+          echo "  - Committed changes (if any)"
+          echo ""
+          echo "Schedule:"
+          echo "  - Daily: 3 AM UTC"
+          echo "  - Weekly: Sundays 4 AM UTC (extra thorough)"
+          echo "  - On-demand: Manual workflow dispatch"
+          echo "========================================="

@@ -470,6 +470,311 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
+## 17. Context Compaction & Memory Management (P1-2) [Tier 2]
+
+### Problem
+Over 50 questions, conversation history accumulates. Without compaction, context window fills up.
+
+### Solution: Checkpoint Every 10 Questions
+
+**After Q10, Q20, Q30, Q40:** Create checkpoint file (`.session/context-checkpoint-q010.md`, etc.)
+
+```markdown
+# Context Checkpoint (Example: Q10)
+
+**Checkpoint:** cp-001
+**Current Question:** 10
+**Progress:** 10/50 (20%)
+**Score So Far:** 8/10 (80%)
+**Time Elapsed:** 3:00
+
+## Domain Progress
+- Verbal: 3/3 (100%)
+- Quantitative: 3/4 (75%)
+- Spatial: 2/3 (67%)
+
+## Recovery
+If context resets: reload this checkpoint, resume from Q11.
+```
+
+### Compaction Strategy
+
+**Before Checkpoint:** Summarize conversation
+- Keep: current_question, score_so_far, time_elapsed, domain_progress
+- Discard: full Q text (stored in `.session/test-results.json`)
+- Discard: intermediate reasoning
+
+**After Checkpoint:**
+- Clear old conversation history from context
+- Inject only summary: "Q10/50 (20%) | Score 80% | Time 3:00"
+- Continue to Q11 with lean context
+
+### Implementation
+```bash
+# After Q10 answered:
+jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+  --arg q "10" \
+  '{timestamp: $ts, current_question: $q, score: "8/10"}' \
+  > .session/context-checkpoint-q010.md
+
+# Clear conversation, keep summary only
+# On next question injection: "You're 20% complete, score 80%..."
+```
+
+**Benefit:** Context stays under 5K tokens; no data loss.
+
+---
+
+## 18. Tool Offloading (P1-3) [Tier 2]
+
+### Problem
+Keeping full test results in context bloats tokens and slows processing.
+
+### Solution: Write to Disk, Keep Summary in Context
+
+**Full Results → Disk**
+- `.session/test-results.json` — Complete test record (Q1-Q50 responses, scores)
+- `.session/test-session-[timestamp].jsonl` — Event audit log (question_presented, answer_received, scored)
+
+**Summary → Context**
+- "Q25/50 | Score: 80% | Time: 7:30"
+- Enough to resume; nothing more needed
+
+### Implementation
+
+**After Each Q Answered:**
+```bash
+# 1. Write response to disk
+jq --arg resp "user_response" \
+  '.responses += [{question_id: '$QUESTION', response_text: $resp, ...}]' \
+  .session/test-results.json > .tmp && mv .tmp .session/test-results.json
+
+# 2. Write audit event
+echo '{"timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'","event":"answer_received","question_id":'$QUESTION'}' \
+  >> .session/test-session-20260405-120000.jsonl
+
+# 3. Keep in context only: summary
+# "Q25/50 | Score: 80% (20/25 correct)"
+```
+
+**Benefits:**
+- Context stays lean (~500 tokens for summary vs. 3K tokens for full results)
+- No data loss (everything on disk)
+- Fast recovery (load json on context reset)
+- Audit trail complete (jsonl events)
+
+---
+
+## 19. Planning, Task Lists & Blackboards (P1-7) [Tier 2]
+
+### Problem
+Over 50 questions, without explicit task tracking, agent may lose sight of progress and decisions.
+
+### Solution: Two-File Planning System
+
+#### File 1: Test Plan (`.session/test-plan.md`)
+
+```markdown
+## Execution Status
+- Questions Presented: 0/50
+- Questions Answered: 0/50
+- Current Question: 0
+- Score So Far: —
+- Time Elapsed: 00:00
+
+## Question Status
+| Q# | Domain | Status | Correct | Notes |
+|----|--------|--------|---------|-------|
+| 1 | Verbal | presented | — | |
+| 2 | Quantitative | answered | Yes | |
+| ... | ... | ... | ... | ... |
+| 50 | Spatial | not-started | — | |
+
+## Checkpoint Progress
+| Checkpoint | Status | Score |
+|------------|--------|-------|
+| Q10 | ✓ Complete | 80% |
+| Q20 | pending | — |
+| Q30 | pending | — |
+| Q40 | pending | — |
+| Q50 | pending | — |
+```
+
+**Updated:** After each Q answered (auto-update status row)
+
+#### File 2: Test Blackboard (`.session/test-blackboard.md`)
+
+```markdown
+## Decision Log
+
+### Decision 1: Socratic Interrogation
+- Timestamp: [start]
+- What: Applied 6-category questioning
+- Resolution: All ambiguities resolved
+- Status: ✓ Complete
+
+### Decision 2: [New decisions added as test progresses]
+
+## Observation Log
+- Q1: Clear question, no ambiguity
+- Q5: User answer slightly unclear; clarified
+- ... [more observations]
+
+## Escalation Log
+- (None yet)
+
+## Test Integrity Checklist
+- [x] No answer reveals
+- [x] No skipped questions
+- [ ] Time tracking accurate (pending)
+- ... [more items]
+```
+
+**Updated:** As decisions and observations occur
+
+### Implementation
+
+**Inject Plan Status Before Each Q:**
+```
+===== TEST PROGRESS =====
+Q25/50 (50% complete) | Score: 84% (21/25) | Time: 7:34
+Verbal: 9/9 (100%) | Quant: 7/8 (87%) | Spatial: 5/8 (62%)
+Last Checkpoint: Q20 ✓
+========================
+```
+
+**Auto-Update Plan After Each Q:**
+- Mark Q_N status: presented → answered → scored
+- Update score counter
+- Update timestamp
+
+**Benefit:** Clear view of progress; enables smart decision-making; recoverable after context reset.
+
+---
+
+## 20. Ralph Loops: Context Reset Recovery (P0-4) [Tier 2]
+
+### Problem
+Test spans 50 questions (3-5K tokens). If context window limit approached mid-test, must recover without data loss.
+
+### Solution: State Serialization + Reinjection
+
+#### Step 1: Detect Context Nearing Limit
+
+When approaching context window limit (~80% full):
+1. Save current state to serialization file
+2. Emit **exit code 42** (Ralph Loop signal)
+3. Include full state in exit message
+
+#### Step 2: State Serialization
+
+File: `.session/ralph-state.json`
+
+```json
+{
+  "test_session_id": "ccat-2026-04-05-120000",
+  "context_reset_count": 1,
+  "last_context_window": "3800 tokens",
+  "current_checkpoint": {
+    "timestamp": "2026-04-05T12:30:00.000Z",
+    "question": 25,
+    "score_so_far": "80%",
+    "time_elapsed": "7:34"
+  },
+  "responses_count": 25,
+  "max_reinjections": 3
+}
+```
+
+#### Step 3: Exit Code 42
+
+```bash
+# When context limit approaching:
+echo "=== Context Reset Signal ==="
+echo "Current state: Q25/50, Score 84%, Time 7:34"
+echo "Ralph Loop budget: 2/3 remaining"
+exit 42
+```
+
+#### Step 4: System Reinjects Prompt + State
+
+System receives exit code 42:
+1. Parse state from `.session/ralph-state.json`
+2. Reload agent prompt with injected state
+3. Agent resumes from Q26 (next question)
+4. Continue until Q50
+
+#### Step 5: Context Reset Handling in CLAUDE.md
+
+**If context resets mid-test (you detect this):**
+
+```markdown
+1. Check: Does .session/ralph-state.json exist?
+   YES → Load state, resume from Q_N+1
+   NO → Load .session/test-results.json, resume from Q_N+1
+
+2. Verify: Does current_question match checkpoint?
+   YES → Continue test without interruption
+   NO → Log error, escalate to human
+
+3. Continue: Resume test execution from current_question + 1
+
+4. Log: Record context reset event in audit trail
+```
+
+### Implementation
+
+**In CLAUDE.md Instructions:**
+
+```markdown
+## Context Reset Detection & Recovery
+
+### How to Detect Context Reset
+
+You will receive a reinject message like:
+```json
+{
+  "event": "context_reset_recovery",
+  "checkpoint": "Q25",
+  "resume_from": "Q26",
+  "state": {
+    "score_so_far": "84%",
+    "time_elapsed": "7:34",
+    "domain_progress": {...}
+  }
+}
+```
+
+### How to Resume
+
+1. Acknowledge the reset: "Context reset detected. Resuming from Q26..."
+2. Reload test state: Query .session/test-results.json
+3. Present next question: Present Q26
+4. Continue: Q27, Q28, ..., Q50
+
+### Max Reinjections
+
+You get up to 3 reinjections. If > 3 resets:
+- Log: "Error: Exceeded max reinjection limit"
+- Escalate: Ask human for guidance
+- Do NOT continue (risk of infinite loop)
+
+### Preventing Premature Exits
+
+- Do NOT exit before Q50 answered (except reinjection)
+- Do NOT abandon test (escalate instead)
+- Do NOT lose track of question count
+- Do NOT forget to record responses
+```
+
+**Benefits:**
+- Long-horizon task (50 Q) can complete across multiple context windows
+- No data loss (full state on disk)
+- Transparent recovery (agent aware of resets)
+- Bounded safety (max 3 reinjections)
+
+---
+
 ## References & Cross-Links
 
 - **AGENTS.md** — Agent definitions and operational metadata
