@@ -1,0 +1,101 @@
+{
+  "metadata": {
+    "schema_version": "1.0.0",
+    "last_updated": "2026-04-05T00:00:00.000Z",
+    "description": "Feature flags for graceful removal of middleware as model improves"
+  },
+  "flags": {
+    "FEATURE_SOCRATIC_QUESTIONING": {
+      "id": "flag-001",
+      "enabled": true,
+      "category": "pre-execution",
+      "rationale": "Resolve ambiguities in user input before test execution",
+      "implemented_in": "CLAUDE.md §9",
+      "removal_condition": "Agent demonstrates 100% clarity without questioning for 10 consecutive sessions",
+      "removal_date": null,
+      "estimated_removal": "never (baseline feature)",
+      "notes": "Core safety mechanism; unlikely to remove"
+    },
+    "FEATURE_STATE_CHECKPOINTS": {
+      "id": "flag-002",
+      "enabled": true,
+      "category": "resilience",
+      "rationale": "Enable recovery from context window limits via checkpoints",
+      "implemented_in": "CLAUDE.md §17, .session/context-checkpoint-schema.md",
+      "removal_condition": "Context window limits no longer a concern (e.g., 16K+ tokens standard)",
+      "removal_date": null,
+      "estimated_removal": "2027 Q3+ (after model improvements)",
+      "notes": "Becomes unnecessary as model context grows; safe to remove"
+    },
+    "FEATURE_ESCALATION_GATES": {
+      "id": "flag-003",
+      "enabled": true,
+      "category": "safety",
+      "rationale": "Prevent agent mistakes by escalating critical errors to human review",
+      "implemented_in": "CLAUDE.md §10",
+      "removal_condition": "Agent error rate < 0.1% across 100 sessions",
+      "removal_date": null,
+      "estimated_removal": "2026 Q4+ (after robustness validation)",
+      "notes": "Can be loosened once error rate proven low"
+    },
+    "FEATURE_RALPH_LOOPS": {
+      "id": "flag-004",
+      "enabled": true,
+      "category": "resilience",
+      "rationale": "Recover from context resets via state serialization and reinjection",
+      "implemented_in": "CLAUDE.md §20, .session/ralph-state.json",
+      "removal_condition": "Context windows never approach limit in practice (3 resets never needed)",
+      "removal_date": null,
+      "estimated_removal": "2027 Q2+ (after model context expanded)",
+      "notes": "Becomes dead code once context large enough; safe to remove"
+    },
+    "FEATURE_AUDIT_LOGGING": {
+      "id": "flag-005",
+      "enabled": true,
+      "category": "compliance",
+      "rationale": "Maintain full audit trail for compliance and debugging",
+      "implemented_in": "CLAUDE.md §11, .session/test-session-*.jsonl",
+      "removal_condition": "Never (regulatory requirement, keep indefinitely)",
+      "removal_date": null,
+      "estimated_removal": "never (compliance feature)",
+      "notes": "Essential for any production system; do not remove"
+    },
+    "FEATURE_SECONDARY_VALIDATION": {
+      "id": "flag-006",
+      "enabled": true,
+      "category": "quality",
+      "rationale": "Secondary LLM validation of test administration (QA Auditor)",
+      "implemented_in": "CLAUDE.md §21, .agent/auditors/qa-auditor.md",
+      "removal_condition": "Primary agent reliability reaches 99.9% without secondary review",
+      "removal_date": null,
+      "estimated_removal": "2027 Q3+ (after validation suite passes)",
+      "notes": "Can be removed if primary agent proves reliable; safe to disable"
+    },
+    "FEATURE_PATTERN_AUDITING": {
+      "id": "flag-007",
+      "enabled": true,
+      "category": "maintenance",
+      "rationale": "Automated detection of dead code, circular deps, duplication",
+      "implemented_in": "CLAUDE.md §22, .github/workflows/pattern-audit.yml",
+      "removal_condition": "Never (continuous improvement mechanism)",
+      "removal_date": null,
+      "estimated_removal": "never (maintenance feature)",
+      "notes": "Valuable long-term; keep active"
+    }
+  },
+  "removal_protocol": {
+    "step_1": "Mark flag as 'deprecated' with reason",
+    "step_2": "Log removal decision in ANCHORS.md",
+    "step_3": "Add deprecation warning in code comments",
+    "step_4": "Remove feature in next release",
+    "step_5": "Update git history and create release notes",
+    "example": "If FEATURE_STATE_CHECKPOINTS removal approved: Remove all checkpoint code, update CLAUDE.md §17, commit with 'chore: remove FEATURE_STATE_CHECKPOINTS (no longer needed)'"
+  },
+  "current_status": {
+    "total_flags": 7,
+    "enabled": 7,
+    "disabled": 0,
+    "deprecated": 0,
+    "last_review": "2026-04-05T00:00:00.000Z"
+  }
+}
