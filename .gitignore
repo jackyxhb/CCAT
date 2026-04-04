@@ -1,0 +1,28 @@
+# Session state and logs
+.session/
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test state
+test-state.json
+test-results.json
+
+# Dependencies (if applicable)
+node_modules/
+*.pyc
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
